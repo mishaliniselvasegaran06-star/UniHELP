@@ -1,0 +1,42 @@
+CREATE DATABASE IF NOT EXISTS unihelp_db;
+USE unihelp_db;
+
+CREATE TABLE IF NOT EXISTS USERS (
+    user_id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id VARCHAR(20) UNIQUE NOT NULL,
+    full_name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    otp_code VARCHAR(6) DEFAULT NULL,
+    is_verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS SUPPORT_REQUESTS (
+    request_id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    category VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,
+    preferred_datetime DATETIME NOT NULL,
+    mode VARCHAR(50) NOT NULL,
+    status VARCHAR(20) DEFAULT 'Pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS SESSIONS (
+    session_id INT AUTO_INCREMENT PRIMARY KEY,
+    request_id INT NOT NULL,
+    scheduled_datetime DATETIME NOT NULL,
+    mode VARCHAR(50) NOT NULL,
+    status VARCHAR(20) DEFAULT 'Scheduled',
+    FOREIGN KEY (request_id) REFERENCES SUPPORT_REQUESTS(request_id)
+);
+
+CREATE TABLE IF NOT EXISTS FEEDBACK (
+    feedback_id INT AUTO_INCREMENT PRIMARY KEY,
+    request_id INT NOT NULL,
+    rating INT CHECK (rating >= 1 AND rating <= 5),
+    comments TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (request_id) REFERENCES SUPPORT_REQUESTS(request_id)
+);
