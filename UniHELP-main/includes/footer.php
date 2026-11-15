@@ -6,6 +6,6 @@
     </div>
 </footer>
 
-<script src="<?= APP_URL ?>/assets/app.js"></script>
+<script src="assets/app.js"></script>
 </body>
 </html>

@@ -8,9 +8,11 @@ define('DB_CHAR', 'utf8mb4');
 
 // ── App Configuration ─────────────────────────────────────────
 define('APP_NAME',    'UniHELP');
-define('APP_URL',     'http://localhost/unihelp');
+define('APP_URL',     'http://localhost/UniHELP-main');
 define('UPLOAD_DIR',  __DIR__ . '/uploads/');
 define('UPLOAD_URL',  APP_URL . '/uploads/');
+define('OTP_FROM_EMAIL', 'no-reply@unihelp.local');
+define('SHOW_OTP_IF_EMAIL_FAILS', true);
 
 // ── Session start ─────────────────────────────────────────────
 if (session_status() === PHP_SESSION_NONE) {
@@ -103,4 +105,17 @@ function generate2FACode(int $userId): string {
     );
     $stmt->execute([$userId, $code]);
     return $code;
+}
+
+// ── Helper: send 2FA code by email ────────────────────────────
+function send2FACodeEmail(string $email, string $code): bool {
+    $subject = APP_NAME . ' login verification code';
+    $message = "Your " . APP_NAME . " verification code is: {$code}\n\n"
+             . "This code expires in 10 minutes. If you did not try to log in, ignore this email.";
+    $headers = [
+        'From: ' . OTP_FROM_EMAIL,
+        'Content-Type: text/plain; charset=UTF-8',
+    ];
+
+    return @mail($email, $subject, $message, implode("\r\n", $headers));
 }

@@ -1,19 +1,25 @@
 <?php
 require_once 'config.php';
 
-// Already logged in → redirect
+// Already logged in -> redirect
 if (!empty($_SESSION['user_id']) && !empty($_SESSION['2fa_verified'])) {
     redirect('dashboard.php');
 }
 
+// Allow "Back to login" link (?reset=1) to clear pending 2FA
+if (isset($_GET['reset'])) {
+    unset($_SESSION['2fa_pending_user'], $_SESSION['demo_code']);
+    redirect('index.php');
+}
+
 $errors = [];
-$step   = $_SESSION['2fa_pending_user'] ?? null ? 'verify' : 'login';
+$step   = !empty($_SESSION['2fa_pending_user']) ? 'verify' : 'login';
 
 /* ── Handle login form ──────────────────────────────────── */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     verifyCsrf();
     $email    = trim($_POST['email']    ?? '');
-    $password =       $_POST['password'] ?? '';
+    $password =      $_POST['password'] ?? '';
 
     if (!$email || !$password) {
         $errors[] = 'Please enter your email and password.';
@@ -23,17 +29,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         $user = $stmt->fetch();
 
         if ($user && password_verify($password, $user['password_hash'])) {
-            // Store partial session; require 2FA
             $_SESSION['2fa_pending_user'] = $user['id'];
-            $code = generate2FACode($user['id']);
-
-            // In production, send $code via email/SMS.
-            // For demo, we store it in session so you can see it.
-            $_SESSION['demo_code'] = $code;
-
+            $code = generate2FACode((int)$user['id']);
+            if (!send2FACodeEmail($user['email'], $code) && SHOW_OTP_IF_EMAIL_FAILS) {
+                $_SESSION['demo_code'] = $code;
+            } else {
+                unset($_SESSION['demo_code']);
+            }
             $step = 'verify';
         } else {
             $errors[] = 'Invalid email or password.';
+        }
+    }
+}
+
+/* ── Resend 2FA code ────────────────────────────────────── */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend'])) {
+    verifyCsrf();
+    $pendingId = $_SESSION['2fa_pending_user'] ?? null;
+
+    if (!$pendingId) {
+        $errors[] = 'Session expired. Please log in again.';
+        $step = 'login';
+    } else {
+        $stmt = db()->prepare('SELECT email FROM users WHERE id = ? LIMIT 1');
+        $stmt->execute([$pendingId]);
+        $email = $stmt->fetchColumn();
+
+        if (!$email) {
+            $errors[] = 'Account not found. Please log in again.';
+            $step = 'login';
+        } else {
+            db()->prepare('UPDATE two_factor_codes SET used = 1 WHERE user_id = ? AND used = 0')
+                ->execute([$pendingId]);
+            $code = generate2FACode((int)$pendingId);
+            if (!send2FACodeEmail($email, $code) && SHOW_OTP_IF_EMAIL_FAILS) {
+                $_SESSION['demo_code'] = $code;
+            } else {
+                unset($_SESSION['demo_code']);
+            }
+            $step = 'verify';
         }
     }
 }
@@ -42,28 +77,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify'])) {
     verifyCsrf();
     $pendingId = $_SESSION['2fa_pending_user'] ?? null;
-    $code      = trim($_POST['otp_code'] ?? '');
+    $digits    = is_array($_POST['digits'] ?? null) ? implode('', $_POST['digits']) : '';
+    $code      = preg_replace('/\D+/', '', trim($_POST['otp_code'] ?? '') ?: $digits);
 
     if (!$pendingId) {
         $errors[] = 'Session expired. Please log in again.';
         $step = 'login';
-    } elseif (strlen($code) !== 6 || !ctype_digit($code)) {
+    } elseif (strlen($code) !== 6) {
         $errors[] = 'Please enter a valid 6-digit code.';
         $step = 'verify';
     } else {
         $stmt = db()->prepare(
             'SELECT id FROM two_factor_codes
-             WHERE user_id = ? AND code = ? AND used = 0 AND expires_at > NOW()
-             LIMIT 1'
+             WHERE user_id = ? AND code = ? AND used = 0
+             ORDER BY id DESC LIMIT 1'
         );
         $stmt->execute([$pendingId, $code]);
         $row = $stmt->fetch();
 
         if ($row) {
-            // Mark code used
             db()->prepare('UPDATE two_factor_codes SET used = 1 WHERE id = ?')->execute([$row['id']]);
 
-            // Load user into session
             $user = db()->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
             $user->execute([$pendingId]);
             $u = $user->fetch();
@@ -74,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['verify'])) {
             $_SESSION['user_role']    = $u['role'];
             $_SESSION['is_volunteer'] = (bool) $u['is_volunteer'];
             $_SESSION['2fa_verified'] = true;
+            session_regenerate_id(true);
             unset($_SESSION['2fa_pending_user'], $_SESSION['demo_code']);
 
             redirect('dashboard.php');
@@ -168,13 +203,13 @@ $pageTitle = 'Login';
             </div>
 
             <form method="POST" id="otpForm">
-                <input type="hidden" name="csrf"      value="<?= e(csrfToken()) ?>">
-                <input type="hidden" name="verify"    value="1">
-                <input type="hidden" name="otp_code"  id="otpValue">
+                <input type="hidden" name="csrf"     value="<?= e(csrfToken()) ?>">
+                <input type="hidden" name="verify"   value="1">
+                <input type="hidden" name="otp_code" id="otpValue">
 
                 <div class="otp-group">
                     <?php for ($i = 0; $i < 6; $i++): ?>
-                    <input type="text" class="otp-input" inputmode="numeric"
+                    <input type="text" name="digits[]" class="otp-input" inputmode="numeric"
                            maxlength="1" autocomplete="one-time-code"
                            <?= $i === 0 ? 'autofocus' : '' ?>>
                     <?php endfor; ?>
@@ -186,17 +221,51 @@ $pageTitle = 'Login';
                 </button>
             </form>
 
-            <p class="text-muted" style="text-align:center;font-size:.8rem;margin-top:14px;">
-                Didn't receive a code? <a href="?resend=1" style="font-weight:700;">Resend</a>
-            </p>
+            <form method="POST" style="text-align:center;margin-top:14px;">
+                <input type="hidden" name="csrf" value="<?= e(csrfToken()) ?>">
+                <input type="hidden" name="resend" value="1">
+                <span class="text-muted" style="font-size:.8rem;">Didn't receive a code?</span>
+                <button type="submit" style="border:0;background:none;color:var(--primary);font-weight:700;cursor:pointer;">Resend</button>
+            </form>
             <p style="text-align:center;margin-top:8px;">
-                <a href="index.php" style="font-size:.78rem;color:var(--muted);">← Back to login</a>
+                <a href="index.php?reset=1" style="font-size:.78rem;color:var(--muted);">← Back to login</a>
             </p>
         </div>
         <?php endif; ?>
     </div>
 </div>
 
-<script src="assets/app.js"></script>
+<script>
+(function () {
+    const inputs = Array.from(document.querySelectorAll('.otp-input'));
+    const hidden = document.getElementById('otpValue');
+    if (!inputs.length || !hidden) return;
+
+    function sync() {
+        hidden.value = inputs.map(i => i.value.replace(/\D/g, '')).join('');
+    }
+
+    inputs.forEach((input, idx) => {
+        input.addEventListener('input', () => {
+            input.value = input.value.replace(/\D/g, '').slice(-1);
+            sync();
+            if (input.value && idx < inputs.length - 1) inputs[idx + 1].focus();
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !input.value && idx > 0) inputs[idx - 1].focus();
+        });
+        input.addEventListener('paste', (e) => {
+            const pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+            if (!pasted) return;
+            e.preventDefault();
+            pasted.split('').forEach((ch, i) => { if (inputs[i]) inputs[i].value = ch; });
+            sync();
+            (inputs[Math.min(pasted.length, inputs.length - 1)]).focus();
+        });
+    });
+
+    document.getElementById('otpForm').addEventListener('submit', sync);
+})();
+</script>
 </body>
 </html>

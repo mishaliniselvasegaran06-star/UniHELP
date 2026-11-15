@@ -15,7 +15,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'email'        => trim($_POST['email']         ?? ''),
         'password'     => $_POST['password']           ?? '',
         'confirm_pwd'  => $_POST['confirm_password']   ?? '',
-        'is_volunteer' => isset($_POST['is_volunteer']),
     ];
 
     if (!$vals['student_id'])  $errors[] = 'Student ID is required.';
@@ -32,7 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'That email or Student ID is already registered.';
         } else {
             $hash = password_hash($vals['password'], PASSWORD_BCRYPT, ['cost' => 12]);
-            $role = $vals['is_volunteer'] ? 'volunteer' : 'student';
             $stmt = db()->prepare(
                 'INSERT INTO users (student_id, full_name, email, password_hash, is_volunteer, role)
                  VALUES (?, ?, ?, ?, ?, ?)'
@@ -42,8 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $vals['full_name'],
                 $vals['email'],
                 $hash,
-                (int) $vals['is_volunteer'],
-                $role,
+                0,
+                'student',
             ]);
             setFlash('success', 'Account created! Please log in.');
             redirect('index.php');
@@ -109,8 +107,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label>Password <span class="req">*</span></label>
                     <input class="form-control" type="password" id="password"
                            name="password" placeholder="At least 8 characters" required>
-                    <div class="form-hint">
-                        Strength: <strong id="pwStrength"></strong>
+                    <div class="password-meter"><span id="pwMeter"></span></div>
+                    <div class="form-hint password-strength-copy">
+                        Strength: <strong id="pwStrength">Enter a password</strong>
                     </div>
                 </div>
 
@@ -118,17 +117,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label>Confirm Password <span class="req">*</span></label>
                     <input class="form-control" type="password" name="confirm_password"
                            placeholder="Repeat your password" required>
-                </div>
-
-                <div class="form-group">
-                    <label class="skill-item" style="cursor:pointer;padding:14px;border:1.5px solid var(--border);border-radius:10px;display:flex;gap:12px;align-items:flex-start;">
-                        <input type="checkbox" name="is_volunteer"
-                               <?= !empty($vals['is_volunteer']) ? 'checked' : '' ?>>
-                        <div>
-                            <div class="skill-title">Register as Volunteer</div>
-                            <div class="skill-desc">Help fellow students with academic, tech, and general support.</div>
-                        </div>
-                    </label>
                 </div>
 
                 <button type="submit" class="btn btn-navy btn-block btn-lg">

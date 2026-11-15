@@ -232,6 +232,9 @@ select.form-control {
 
 .form-hint { font-size: .75rem; color: var(--muted); margin-top: 4px; }
 .form-error { font-size: .75rem; color: var(--danger); margin-top: 4px; }
+.password-meter { height: 6px; overflow: hidden; margin-top: 8px; border-radius: 999px; background: #e2e8f0; }
+.password-meter span { display: block; width: 0; height: 100%; border-radius: inherit; transition: var(--transition); }
+.password-strength-copy { text-align: right; }
 
 /* row / col grid */
 .row { display: flex; flex-wrap: wrap; gap: 18px; }
@@ -411,8 +414,6 @@ select.form-control {
 
 .request-card.accepted { opacity: .75; border-left: 4px solid var(--success); }
 .request-card.rejected { opacity: .5;  border-left: 4px solid var(--danger); }
-.session-card.completed { opacity: .7; border-left: 4px solid var(--success); }
-.session-card.cancelled { opacity: .5; border-left: 4px solid var(--danger); }
 
 .card-row {
     display: flex;
@@ -511,8 +512,15 @@ select.form-control {
 }
 
 .avail-slot:hover { border-color: var(--primary); background: #eff6ff; }
-.avail-slot.on   { background: var(--navy); border-color: var(--navy); }
-.avail-slot.on:hover { background: var(--navy-light); }
+.avail-slot.on   { background: var(--success); border-color: var(--success); }
+.avail-slot.on:hover { background: var(--success-dark); }
+.avail-slot input { position: absolute; opacity: 0; pointer-events: none; }
+.availability-scroll { overflow-x: auto; padding-bottom: 4px; }
+.availability-legend { display: flex; gap: 16px; margin-top: 14px; color: var(--muted); font-size: .75rem; }
+.availability-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend-dot { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--border); background: white; }
+.legend-dot.available { background: var(--success); border-color: var(--success); }
+.skills-availability-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 24px; align-items: start; }
 
 /* ── Skills checkboxes ──────────────────────────────────────── */
 .skill-item {
@@ -643,7 +651,56 @@ select.form-control {
     font-family: 'Inter', sans-serif;
 }
 .quick-tag:hover { border-color: var(--primary); color: var(--primary); background: #eff6ff; }
-.quick-tag.selected { border-color: var(--primary); color: var(--primary); background: #eff6ff; }
+.quick-tag.selected { border-color: var(--primary); color: white; background: var(--primary); }
+.quick-tag input { position: absolute; opacity: 0; pointer-events: none; }
+
+/* ── Complete request flow ─────────────────────────────────── */
+.request-form-wrap { max-width: 680px; }
+.panel-flash { border-radius: var(--radius); margin-bottom: 16px; }
+.counter { text-align: right; }
+.results-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.results-heading h1 { font-size: 1.55rem; font-weight: 800; }
+.results-heading p { color: var(--muted); font-size: .875rem; margin-top: 3px; }
+.vol-name { font-weight: 800; font-family: 'Nunito', sans-serif; }
+.vol-meta { font-size: .78rem; color: var(--muted); }
+.skill-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.vol-detail { color: #475569; font-size: .8rem; margin-top: 7px; }
+.select-volunteer-form { margin-top: 18px; }
+.selection-bar {
+    position: sticky; bottom: 16px; z-index: 30;
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    margin-top: 24px; padding: 16px 20px; border: 1px solid #bbf7d0;
+    border-radius: var(--radius); background: white; box-shadow: 0 12px 36px rgba(15,23,42,.16);
+}
+.selection-bar p { color: var(--muted); font-size: .8rem; margin-top: 2px; }
+.selection-bar button:disabled { opacity: .45; cursor: not-allowed; }
+.empty-state { text-align: center; padding: 48px 24px; }
+.empty-state p { color: var(--muted); margin-top: 6px; }
+.empty-icon { font-size: 2.4rem; margin-bottom: 12px; }
+
+/* ── Session management ────────────────────────────────────── */
+.sessions-section { margin-bottom: 32px; }
+.section-title { font-size: 1.15rem; font-weight: 800; margin-bottom: 16px; }
+.session-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.session-person { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.session-avatar { width: 52px; height: 52px; flex: 0 0 auto; object-fit: cover; border: 2px solid var(--border); border-radius: 50%; }
+.session-main { min-width: 0; }
+.session-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.session-heading strong { font-family: 'Nunito', sans-serif; }
+.meeting-detail { margin-top: 8px; color: var(--primary); font-size: .8rem; font-weight: 600; overflow-wrap: anywhere; }
+.session-card form { display: inline-flex; }
+.past-sessions .session-card { opacity: .85; }
+
+/* ── Feedback ──────────────────────────────────────────────── */
+.feedback-page { min-height: calc(100vh - 180px); display: flex; align-items: center; justify-content: center; padding: 20px 0; }
+.feedback-card { width: 100%; max-width: 560px; padding: 28px; }
+.feedback-header { padding-bottom: 18px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.feedback-header h1 { font-size: 1.5rem; font-weight: 800; }
+.feedback-header p { color: var(--muted); font-size: .875rem; margin-top: 4px; }
+.session-summary { display: flex; flex-direction: column; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); margin-bottom: 22px; }
+.session-summary span { color: var(--muted); font-size: .8rem; margin-top: 2px; }
+.star-btn { color: #cbd5e1; font-size: 2.2rem; }
+.star-btn.selected { color: #F59E0B; }
 
 /* ── Footer ──────────────────────────────────────────────────── */
 .site-footer {
@@ -705,6 +762,11 @@ select.form-control {
     .card-actions { width: 100%; justify-content: flex-start; }
 
     .avail-slot { width: 30px; height: 30px; }
+    .skills-availability-grid { grid-template-columns: 1fr; }
+    .selection-bar, .session-card { align-items: stretch; flex-direction: column; }
+    .selection-bar .btn { width: 100%; }
+    .session-card .card-actions { width: 100%; }
+    .session-card .card-actions form, .session-card .card-actions .btn { flex: 1; }
     .main-content { padding: 20px 14px 48px; }
     .auth-card { padding: 24px; }
 }
