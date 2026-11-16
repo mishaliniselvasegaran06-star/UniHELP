@@ -10,21 +10,28 @@ $incoming = $db->prepare(
     'SELECT sr.*, u.full_name AS student_name, u.student_id AS s_id
      FROM support_requests sr
      JOIN users u ON u.id = sr.student_id
-     WHERE sr.status = "open"
+     WHERE sr.status IN ("open","selected")
        AND sr.student_id != ?
+       AND (sr.selected_volunteer_id IS NULL OR sr.selected_volunteer_id = ?)
        AND sr.category IN (
            SELECT vs.skill_type FROM volunteer_skills vs WHERE vs.user_id = ?
        )
      ORDER BY sr.created_at DESC'
 );
-$incoming->execute([$u['id'], $u['id']]);
+$incoming->execute([$u['id'], $u['id'], $u['id']]);
 $requests = $incoming->fetchAll();
 
-$accepted = (int) $db->prepare(
-    'SELECT COUNT(*) FROM sessions WHERE volunteer_id = ? AND status = "upcoming"'
-)->execute([$u['id']]) ? $db->query("SELECT COUNT(*) FROM sessions WHERE volunteer_id={$u['id']} AND status='upcoming'")->fetchColumn() : 0;
+$acceptedStmt = $db->prepare(
+    'SELECT COUNT(*) FROM sessions WHERE volunteer_id = ? AND scheduled_datetime >= NOW()'
+);
+$acceptedStmt->execute([$u['id']]);
+$accepted = (int) $acceptedStmt->fetchColumn();
 
-$completed = $db->query("SELECT COUNT(*) FROM sessions WHERE volunteer_id={$u['id']} AND status='completed'")->fetchColumn();
+$completedStmt = $db->prepare(
+    'SELECT COUNT(*) FROM sessions WHERE volunteer_id = ? AND status = "completed"'
+);
+$completedStmt->execute([$u['id']]);
+$completed = (int)$completedStmt->fetchColumn();
 
 $pending = count($requests);
 
@@ -49,17 +56,17 @@ include 'includes/header.php';
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon" style="background:#f0fdf4;">✅</div>
-        <div>
-            <div class="stat-value" style="color:var(--success);"><?= $accepted ?></div>
-            <div class="stat-label">Upcoming Sessions</div>
-        </div>
-    </div>
-    <div class="stat-card">
         <div class="stat-icon" style="background:#eff6ff;">🏆</div>
         <div>
             <div class="stat-value text-primary"><?= $completed ?></div>
             <div class="stat-label">Completed Sessions</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background:#f0fdf4;">✅</div>
+        <div>
+            <div class="stat-value" style="color:var(--success);"><?= $accepted ?></div>
+            <div class="stat-label">Upcoming Sessions</div>
         </div>
     </div>
 </div>
@@ -84,7 +91,9 @@ include 'includes/header.php';
                 <span class="badge badge-red">Urgent</span>
                 <?php endif; ?>
                 <span class="badge badge-blue"><?= e($catLabels[$r['category']] ?? $r['category']) ?></span>
-                <span class="badge badge-slate"><?= e($r['mode']) ?></span>
+                <span class="badge <?= $r['preferred_mode'] === 'f2f' ? 'badge-orange' : 'badge-slate' ?>">
+                    <?= $r['preferred_mode'] === 'f2f' ? 'Face-to-Face' : 'Virtual' ?>
+                </span>
             </div>
             <p style="font-size:.875rem;color:#475569;margin:0 0 8px;"><?= e(substr($r['description'],0,200)) ?><?= strlen($r['description'])>200?'…':'' ?></p>
             <div class="card-meta">
@@ -106,8 +115,7 @@ include 'includes/header.php';
             <button class="btn btn-danger btn-sm"
                     data-action="reject"
                     data-id="<?= $r['id'] ?>">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                Reject
+                ✕ Reject
             </button>
         </div>
     </div>
@@ -125,7 +133,7 @@ include 'includes/header.php';
 <!-- ── Accept modal ──────────────────────────────────────── -->
 <div class="modal-overlay" id="acceptModal" style="display:none;">
     <div class="modal-box">
-        <div class="modal-title">✅ Schedule Session</div>
+        <div class="modal-title">Schedule &amp; Arrange Session</div>
         <p class="text-muted" style="font-size:.875rem;margin-bottom:16px;">
             Choose the date and time for this session before accepting.
         </p>
@@ -133,6 +141,11 @@ include 'includes/header.php';
             <label>Scheduled Date &amp; Time</label>
             <input class="form-control" type="datetime-local" id="scheduleTime"
                    min="<?= date('Y-m-d\TH:i') ?>">
+        </div>
+        <div class="form-group">
+            <label id="arrangementLabel">Meeting Link / Campus Location</label>
+            <input class="form-control" type="text" id="meetingDetails"
+                   placeholder="meet.google.com/abc-defg or Library Room 2B">
         </div>
         <div class="modal-actions">
             <button class="btn btn-success" onclick="confirmAccept()">Confirm Accept</button>
@@ -155,7 +168,8 @@ document.querySelectorAll('[data-action="accept"]').forEach(btn => {
 
 async function confirmAccept() {
     const scheduledAt = document.getElementById('scheduleTime').value;
-    if (!scheduledAt) { alert('Please choose a date and time.'); return; }
+    const meetingDetails = document.getElementById('meetingDetails').value.trim();
+    if (!scheduledAt || !meetingDetails) { alert('Please add the date, time, and meeting details.'); return; }
 
     const csrf = document.querySelector('meta[name=csrf]').content;
     const res  = await fetch('ajax/handle_request.php', {
@@ -163,7 +177,7 @@ async function confirmAccept() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             action: 'accept', request_id: pendingAcceptId,
-            scheduled_at: scheduledAt, csrf
+            scheduled_at: scheduledAt, meeting_details: meetingDetails, csrf
         }),
     });
     const data = await res.json();
@@ -177,6 +191,25 @@ async function confirmAccept() {
         alert(data.error || 'Error');
     }
 }
+
+document.querySelectorAll('[data-action="reject"]').forEach(btn => {
+    btn.addEventListener('click', async e => {
+        e.stopImmediatePropagation();
+        if (!confirm('Reject this support request?')) return;
+        const csrf = document.querySelector('meta[name=csrf]').content;
+        const res = await fetch('ajax/handle_request.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'reject', request_id: btn.dataset.id, csrf })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            const card = document.getElementById('req-' + btn.dataset.id);
+            card.classList.add('rejected');
+            card.querySelector('.card-actions').innerHTML = '<span class="text-danger font-bold">✕ Rejected</span>';
+        } else alert(data.error || 'The request could not be rejected.');
+    }, true);
+});
 </script>
 
 <?php include 'includes/footer.php'; ?>
