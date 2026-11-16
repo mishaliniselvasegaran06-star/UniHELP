@@ -268,5 +268,6 @@ include 'includes/header.php';
 })();
 </script>
 
-<?php include 'includes/footer.php'; ?>/ /   C a s e   3 :   S e s s i o n   s c h e d u l i n g   a n d   r e s c h e d u l i n g   h a n d l e r s   i m p l e m e n t e d   b y   C h a r m a i n e  
+<?php include 'includes/footer.php'; ?>/ /   C a s e   3 :   S e s s i o n   s c h e d u l i n g   a n d   r e s c h e d u l i n g   h a n d l e r s   i m p l e m e n t e d   b y   C h a r m a i n e 
+ 
  
