@@ -19,7 +19,8 @@ $openRequests = $openRequests->fetchColumn();
 
 $upcoming = $db->prepare(
     'SELECT COUNT(*) FROM sessions
-     WHERE (student_id = ? OR volunteer_id = ?) AND status = "upcoming"'
+     WHERE (student_id = ? OR volunteer_id = ?)
+       AND status = "upcoming" AND scheduled_datetime >= NOW()'
 );
 $upcoming->execute([$u['id'], $u['id']]);
 $upcoming = $upcoming->fetchColumn();
@@ -92,7 +93,11 @@ include 'includes/header.php';
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
                 <strong style="font-family:Nunito,sans-serif;"><?= e(ucwords(str_replace('_',' ',$r['category']))) ?> Support</strong>
                 <?php
-                $bc = ['open'=>'badge-blue','matched'=>'badge-green','in_progress'=>'badge-orange','completed'=>'badge-slate','cancelled'=>'badge-red'];
+                $bc = [
+                    'open'=>'badge-blue', 'selected'=>'badge-orange',
+                    'accepted'=>'badge-green', 'completed'=>'badge-slate',
+                    'cancelled'=>'badge-red', 'rejected'=>'badge-red'
+                ];
                 ?>
                 <span class="badge <?= $bc[$r['status']] ?? 'badge-slate' ?>"><?= e(ucfirst($r['status'])) ?></span>
             </div>
